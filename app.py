@@ -9,7 +9,7 @@ from geopy.distance import geodesic
 st.set_page_config(page_title="Route Optimizer", page_icon="🚚")
 st.title("🚚 Delivery Route Optimizer")
 
-# --- State Management (To keep data between clicks) ---
+# --- State Management ---
 if 'deliveries' not in st.session_state:
     st.session_state.deliveries = []
 
@@ -23,42 +23,63 @@ with st.sidebar:
         st.session_state.deliveries = []
         st.rerun()
 
-# --- UI: Add New Stop ---
-with st.expander("➕ Add a New Stop", expanded=True):
-    name = st.text_input("Customer Name")
-    addr = st.text_input("Address")
-    phone = st.text_input("Phone (Optional)")
-    if st.button("Add Stop"):
-        if addr:
-            st.session_state.deliveries.append({"name": name, "address": addr, "phone": phone})
-            st.rerun()
+# --- UI: Add New Stop (Direct Layout) ---
+st.subheader("➕ Add a New Stop")
+
+# Putting Name and Phone side-by-side to save vertical space
+col_a, col_b = st.columns(2)
+with col_a:
+    name = st.text_input("Customer Name", placeholder="e.g. Itamar")
+with col_b:
+    phone = st.text_input("Phone (Optional)", placeholder="050-XXXXXXX")
+
+addr = st.text_input("Address", placeholder="Street, City, Israel")
+
+# Separate, prominent button
+if st.button("Add Stop to Route", use_container_width=True):
+    if addr:
+        st.session_state.deliveries.append({
+            "name": name if name else "Customer", 
+            "address": addr, 
+            "phone": phone
+        })
+        st.rerun()
+    else:
+        st.warning("Please enter an address!")
+
+st.divider() # Adds a nice line to separate input from the list
 
 # --- UI: Current List ---
 st.subheader("Current Stops")
-for i, stop in enumerate(st.session_state.deliveries):
-    cols = st.columns([0.5, 0.2, 0.2, 0.1])
-    cols[0].write(f"**{i+1}. {stop['name']}** - {stop['address']}")
-    
-    # Waze Link
-    waze_url = f"https://waze.com/ul?q={urllib.parse.quote(stop['address'])}&navigate=yes"
-    cols[1].markdown(f"[🔹 Waze]({waze_url})")
-    
-    # Call Link
-    if stop['phone']:
-        cols[2].markdown(f"[📞 Call](tel:{stop['phone']})")
-    
-    # Delete
-    if cols[3].button("❌", key=f"del_{i}"):
-        st.session_state.deliveries.pop(i)
-        st.rerun()
+if not st.session_state.deliveries:
+    st.info("Your list is empty. Add some stops above!")
+else:
+    for i, stop in enumerate(st.session_state.deliveries):
+        # Adjusted column ratios for better mobile viewing
+        cols = st.columns([0.4, 0.2, 0.2, 0.2])
+        
+        cols[0].write(f"**{i+1}. {stop['name']}**")
+        cols[0].caption(stop['address']) # Address sits neatly under the name
+        
+        # Waze Link
+        waze_url = f"https://waze.com/ul?q={urllib.parse.quote(stop['address'])}&navigate=yes"
+        cols[1].markdown(f"[🔹 Waze]({waze_url})")
+        
+        # Call Link
+        if stop['phone']:
+            cols[2].markdown(f"[📞 Call](tel:{stop['phone']})")
+        
+        # Delete
+        if cols[3].button("❌", key=f"del_{i}"):
+            st.session_state.deliveries.pop(i)
+            st.rerun()
 
 # --- Optimization Logic ---
-if st.button("🚀 Optimize & Route", type="primary"):
+if st.button("🚀 Optimize & Route", type="primary", use_container_width=True):
     if not st.session_state.deliveries:
         st.error("Add some stops first!")
     else:
         with st.spinner("Finding the best path..."):
-            # Simple Nearest Neighbor logic for the web version
             start_loc = geolocator.geocode(start_addr)
             time.sleep(1)
             current_coords = (start_loc.latitude, start_loc.longitude)
@@ -81,8 +102,10 @@ if st.button("🚀 Optimize & Route", type="primary"):
             st.session_state.deliveries = optimized_route
             st.success("Route Optimized!")
             
-            # Create Google Maps Link
+            # Updated Google Maps URL format for better reliability
             dest = urllib.parse.quote(optimized_route[-1]['address'])
             waypoints = "%7C".join([urllib.parse.quote(d['address']) for d in optimized_route[:-1]])
-            maps_url = f"https://www.google.com/maps/dir/?api=1&origin={urllib.parse.quote(start_addr)}&destination={dest}&waypoints={waypoints}"
-            st.link_button("🗺️ Open Full Route in Maps", maps_url)
+            origin = urllib.parse.quote(start_addr)
+            maps_url = f"https://www.google.com/maps/dir/?api=1&origin={origin}&destination={dest}&waypoints={waypoints}"
+            
+            st.link_button("🗺️ Open Full Route in Maps", maps_url, use_container_width=True)
