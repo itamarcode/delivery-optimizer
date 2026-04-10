@@ -12,7 +12,7 @@ st.title("🚚 מחשב מסלול משלוחים")
 if 'deliveries' not in st.session_state:
     st.session_state.deliveries = []
 
-geolocator = Nominatim(user_agent="shipping_app_v6")
+geolocator = Nominatim(user_agent="shipping_app_v7")
 
 # --- סרגל צד וייבוא ---
 with st.sidebar:
@@ -20,57 +20,57 @@ with st.sidebar:
     start_addr = st.text_input("נקודת מוצא (בסיס)", "רעננה, ישראל")
     
     st.write("---")
-    uploaded_file = st.file_uploader("העלה קובץ אקסל (שם, כתובת, טלפון)", type=['xlsx', 'csv'])
+    uploaded_file = st.file_uploader("העלה קובץ אקסל", type=['xlsx', 'csv'])
     
     if uploaded_file:
         try:
             # קריאת הקובץ
             df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
             
-            # ניקוי שמות העמודות מרווחים מיותרים (חשוב מאוד!)
-            df.columns = [str(c).strip() for c in df.columns]
-            
-            # זיהוי עמודות
-            col_name = next((c for c in df.columns if any(k in c for k in ['שם', 'Name', 'לקוח'])), None)
-            col_addr = next((c for c in df.columns if any(k in c for k in ['כתובת', 'Address', 'מיקום', 'addr'])), None)
-            col_phone = next((c for c in df.columns if any(k in c for k in ['טלפון', 'Phone', 'נייד'])), None)
+            # הצגת הנתונים הגולמיים כדי לוודא שקראנו נכון
+            with st.expander("תצוגה מקדימה של הקובץ"):
+                st.dataframe(df.head())
 
-            # הצגת דיאגנוסטיקה למשתמש (דיבגינג)
-            st.info(f"מזהה עמודות: שם ({col_name}), כתובת ({col_addr})")
+            if st.button("✅ ייבא נתונים לפי סדר עמודות", use_container_width=True):
+                # במקום לחפש שמות, אנחנו הולכים לפי אינדקסים (0, 1, 2)
+                # לפי התמונה שלך: עמודה 0 = טלפון, עמודה 1 = כתובת, עמודה 2 = שם
+                count = 0
+                for _, row in df.iterrows():
+                    try:
+                        # שליפת ערכים לפי מיקום (iloc)
+                        phone_val = str(row.iloc[0]).split('.')[0].strip()
+                        addr_val = str(row.iloc[1]).strip()
+                        name_val = str(row.iloc[2]).strip()
 
-            if st.button("✅ ייבא נתונים"):
-                if not col_addr:
-                    st.error("לא מצאתי עמודה של 'כתובת' באקסל. וודא שהכותרת תקינה.")
-                else:
-                    count = 0
-                    for _, row in df.iterrows():
-                        addr_val = row[col_addr]
-                        if pd.notna(addr_val):
-                            # תיקון טלפון (הוספת 0)
-                            raw_phone = str(row[col_phone]) if col_phone and pd.notna(row[col_phone]) else ""
-                            clean_phone = raw_phone.split('.')[0].strip()
-                            if clean_phone.isdigit() and len(clean_phone) == 9:
-                                clean_phone = "0" + clean_phone
+                        if addr_val and addr_val != 'nan':
+                            # תיקון טלפון
+                            if phone_val.isdigit() and len(phone_val) == 9:
+                                phone_val = "0" + phone_val
                             
                             st.session_state.deliveries.append({
-                                "name": str(row[col_name]) if col_name else "לקוח",
-                                "address": str(addr_val),
-                                "phone": clean_phone
+                                "name": name_val if name_val != 'nan' else "לקוח",
+                                "address": addr_val,
+                                "phone": phone_val if phone_val != 'nan' else ""
                             })
                             count += 1
-                    
+                    except:
+                        continue
+                
+                if count > 0:
                     st.success(f"הצלחתי לייבא {count} רשומות!")
                     time.sleep(1)
                     st.rerun()
+                else:
+                    st.error("לא הצלחתי לייבא נתונים. וודא שהקובץ לא ריק.")
         except Exception as e:
-            st.error(f"שגיאה בקריאת הקובץ: {e}")
+            st.error(f"שגיאה טכנית: {e}")
 
     st.write("---")
     if st.button("🗑️ נקה הכל"):
         st.session_state.deliveries = []
         st.rerun()
 
-# --- הוספה ידנית ---
+# --- הוספה ידנית ורשימה (נשאר אותו דבר) ---
 st.subheader("➕ הוספת עצירה ידנית")
 with st.form("manual_form", clear_on_submit=True):
     c1, c2 = st.columns(2)
@@ -83,51 +83,40 @@ with st.form("manual_form", clear_on_submit=True):
             st.rerun()
 
 st.divider()
-
-# --- רשימת עצירות ---
 st.subheader(f"רשימת עצירות ({len(st.session_state.deliveries)})")
 for i, stop in enumerate(st.session_state.deliveries):
     cols = st.columns([0.4, 0.2, 0.2, 0.2])
     cols[0].write(f"**{i+1}. {stop['name']}**")
     cols[0].caption(stop['address'])
-    
     waze_url = f"https://waze.com/ul?q={urllib.parse.quote(stop['address'])}&navigate=yes"
     cols[1].markdown(f"[🔹 Waze]({waze_url})")
-    
     if stop['phone']:
         cols[2].markdown(f"[📞 חיוג](tel:{stop['phone']})")
-    
     if cols[3].button("❌", key=f"del_{i}"):
         st.session_state.deliveries.pop(i)
         st.rerun()
 
-# --- כפתור אופטימיזציה ---
 if st.session_state.deliveries:
     if st.button("🚀 חשב מסלול מהיר ופתח מפה", type="primary", use_container_width=True):
-        with st.spinner("מחשב... זה עשוי לקחת רגע (תלוי במספר הכתובות)"):
+        with st.spinner("מחשב..."):
             start_loc = geolocator.geocode(start_addr)
-            if not start_loc:
-                st.error("לא הצלחתי למצוא את נקודת המוצא במפה.")
-            else:
+            if start_loc:
                 current_coords = (start_loc.latitude, start_loc.longitude)
                 unvisited = []
                 for d in st.session_state.deliveries:
-                    time.sleep(1.1) # מניעת חסימה
+                    time.sleep(1.1)
                     loc = geolocator.geocode(d['address'])
                     if loc:
                         d['coords'] = (loc.latitude, loc.longitude)
                         unvisited.append(d)
                 
-                if not unvisited:
-                    st.warning("לא הצלחתי למצוא אף אחת מהכתובות במפה. וודא שהן כתובות נכונות.")
-                else:
+                if unvisited:
                     optimized = []
                     while unvisited:
                         closest = min(unvisited, key=lambda x: geodesic(current_coords, x['coords']).km)
                         optimized.append(closest)
                         current_coords = closest['coords']
                         unvisited.remove(closest)
-                    
                     st.session_state.deliveries = optimized
                     
                     origin = urllib.parse.quote(start_addr)
