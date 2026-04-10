@@ -23,9 +23,34 @@ with st.sidebar:
         st.session_state.deliveries = []
         st.rerun()
 
-# --- UI: Add New Stop (Direct Layout) ---
+# --- UI: Add New Stop (Inside a Form for auto-clearing) ---
 st.subheader("➕ Add a New Stop")
 
+# 'clear_on_submit=True' is the magic part you asked for!
+with st.form("my_form", clear_on_submit=True):
+    col_a, col_b = st.columns(2)
+    with col_a:
+        name = st.text_input("Customer Name", placeholder="e.g. Itamar")
+    with col_b:
+        phone = st.text_input("Phone (Optional)", placeholder="050-XXXXXXX")
+
+    addr = st.text_input("Address", placeholder="Street, City, Israel")
+
+    # In a form, you MUST use st.form_submit_button
+    submitted = st.form_submit_button("Add Stop to Route", use_container_width=True)
+    
+    if submitted:
+        if addr:
+            st.session_state.deliveries.append({
+                "name": name if name else "Customer", 
+                "address": addr, 
+                "phone": phone
+            })
+            st.rerun()
+        else:
+            st.warning("Please enter an address!")
+
+st.divider()
 # Putting Name and Phone side-by-side to save vertical space
 col_a, col_b = st.columns(2)
 with col_a:
